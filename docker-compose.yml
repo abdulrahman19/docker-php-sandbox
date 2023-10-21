@@ -1,0 +1,92 @@
+version: '3.4'
+
+services:
+  sandbox-php-fpm:
+    build:
+      context: docker/php-fpm
+      # args:
+      #   PHP_VERSION: 8.2.11
+      #   APCU_VERSION: 5.1.22
+      #   CLEAR_DEPS: 0
+    image: sandbox/php-fpm
+    networks:
+      - internal
+
+  sandbox-php-composer:
+    build:
+      context: docker/php-composer
+      # args:
+      #   COMPOSER_VERSION: 2.6.5
+    image: sandbox/php-composer
+    depends_on:
+      - sandbox-php-fpm
+    networks:
+      - internal
+
+  sandbox-php:
+    build:
+      context: docker/php.local
+      args:
+        CLEAR_DEPS: 1
+      #   INSTALL_XDEBUG: 0
+      #   XDEBUG_VERSION: 3.2.2
+    depends_on:
+      - sandbox-php-composer
+    volumes:
+      - ./src:/srv:delegated
+      - fpm-socket:/var/run/fpm
+      - ./docker/php.local/php.ini:/usr/local/etc/php/php.ini
+      - ./docker/php.local/php-cli.ini:/usr/local/etc/php/php-cli.ini
+    networks:
+      - internal
+
+  sandbox-nginx:
+    build:
+      context: docker/nginx
+      # args:
+      #   NGINX_VERSION: 1.25.2
+    depends_on:
+      - sandbox-php
+    volumes:
+      - ./src:/srv:delegated
+      - fpm-socket:/var/run/fpm
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:delegated
+    ports:
+      - "80:80"
+    networks:
+      - internal
+
+  sandbox-nodejs:
+    build: docker/nodejs
+    depends_on:
+      - sandbox-php
+    environment:
+      - GULP_ENV=dev
+      - PHP_HOST=sandbox-php
+      - PHP_PORT=9000
+    volumes:
+      - ./src:/srv:delegated
+    ports:
+      - "35729:35729"
+    networks:
+      - internal
+
+  sandbox-database:
+    build: docker/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    tty: true
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_USER=symfony
+      - MYSQL_DATABASE=symfony
+      - MYSQL_PASSWORD=symfony
+    ports:
+      - "3306:3306"
+    networks:
+      - internal
+
+volumes:
+  fpm-socket:
+
+networks:
+  internal:
